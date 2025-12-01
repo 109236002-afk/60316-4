@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>塔防遊戲V1.1</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: #1e1e1e; /* 深色背景 */
+            color: #e0e0e0;
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        /* 遊戲容器 */
+        #game-container {
+            max-width: 800px;
+            width: 100%;
+            margin: 0 auto; /* 水平置中 */
+            background-color: #2d2d2d;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative; /* 用於定位研究面板 */
+        }
+
+        /* 標題列 */
+        .game-header {
+            background-color: #252525;
+            padding: 12px 20px;
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #fff;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .version-badge {
+            background-color: #4CAF50;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        /* 保持畫布長寬比的包裹器 (800x480 = 10:6 = 100:60) */
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            padding-top: 60%; /* 60% = 480 / 800 * 100% */
+            background-color: #000;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #5a8c49; /* 草地顏色 */
+            border-bottom: 2px solid #444;
+        }
+
+        /* UI 面板 */
+        #ui-panel {
+            padding: 16px;
+            background-color: #3a3a3a;
+            border-top: 2px solid #444;
+        }
+
+        #stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 16px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        #stats span {
+            padding: 8px 12px;
+            background-color: #4a4a4a;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3) inset;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        #controls {
+            display: flex;
+            flex-wrap: wrap; /* 允許按鈕換行 */
+            gap: 12px;
+            justify-content: center;
+        }
+
+        button {
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background-color: #5c5c5c;
+            color: #ffffff;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            flex-grow: 1; /* 按鈕自動填滿空間 */
+            min-width: 120px; /* 最小寬度 */
+            position: relative; /* 用於定位價格標籤 */
+            overflow: hidden; /* 確保進度條不溢出 */
+        }
+
+        button.start-wave {
+            background-color: #4CAF50; /* 綠色 */
+        }
+        
+        button.tower-buy {
+            background-color: #008CBA; /* 藍色 */
+            z-index: 1;
+        }
+        
+        button.tower-buy.selected,
+        button.tower-buy:hover:not(:disabled):not(.locked):not(.unlocking) {
+            background-color: #00aeff;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 鎖定狀態的按鈕 */
+        button.tower-buy.locked {
+            background-color: #444;
+            border: 2px dashed #666;
+            color: #aaa;
+        }
+        button.tower-buy.locked:hover:not(.expensive) {
+            background-color: #555;
+            color: #fff;
+            border-color: #ffd700; /* 金色邊框提示解鎖 */
+        }
+
+        /* 解鎖中狀態 */
+        button.tower-buy.unlocking,
+        button.research-btn.unlocking {
+            background-color: #555;
+            border: 2px solid #ffd700;
+            color: #fff;
+            cursor: wait;
+        }
+        
+        /* 進度條背景 */
+        .progress-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background-color: rgba(255, 215, 0, 0.3); /* 金色半透明 */
+            z-index: -1;
+            transition: width 0.1s linear;
+        }
+
+        /* 自動建造按鈕樣式 */
+        #autoBuildBtn {
+            background-color: #9c27b0; /* 紫色 */
+            border: 2px solid transparent;
+        }
+        #autoBuildBtn.active {
+            background-color: #7b1fa2;
+            border-color: #e1bee7;
+            box-shadow: 0 0 10px #9c27b0;
+        }
+
+        /* 研究室按鈕 */
+        #researchToggleBtn {
+            background-color: #FF9800; /* 橘色 */
+        }
+        #researchToggleBtn:hover {
+            background-color: #F57C00;
+        }
+
+        button:disabled {
+            background-color: #757575;
+            color: #b0b0b0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        /* 金錢不足時的樣式 (不禁用，但變紅) */
+        button.expensive {
+            opacity: 0.7;
+            color: #ff8888;
+        }
+
+        /* 遊戲結束/獲勝彈窗 */
+        #popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 40px;
+            border-radius: 16px;
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-align: center;
+            display: none; /* 預設隱藏 */
+            z-index: 100;
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+        }
+
+        /* 浮動訊息樣式 */
+        #message {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 50, 50, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-weight: bold;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 101;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        
+        /* 成功訊息樣式 */
+        #message.success {
+            background-color: rgba(50, 200, 50, 0.9);
+        }
+
+        /* 研究面板 */
+        #researchPanel {
+            position: absolute;
+            bottom: 80px; /* 在控制列上方 */
+            right: 20px;
+            width: 300px;
+            background-color: rgba(40, 40, 40, 0.95);
+            border: 1px solid #666;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 102;
+            display: none; /* 預設隱藏 */
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .research-header {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #555;
+            padding-bottom: 8px;
+        }
+
+        .research-item {
+            margin-bottom: 16px;
+            background-color: #333;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .research-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .research-desc {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+
+        .research-btn {
+            width: 100%;
+            padding: 8px;
+            font-size: 0.9rem;
+            background-color: #00897B; /* 藍綠色 */
+            position: relative;
+            overflow: hidden;
+        }
+        .research-btn:hover:not(:disabled):not(.unlocking) {
+            background-color: #00796B;
+        }
+        .research-btn.maxed {
+            background-color: #555;
+            color: #888;
+            border: 1px solid #666;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- 新增標題列 -->
+        <div class="game-header">
+            塔防遊戲 <span class="version-badge">V1.1</span>
+        </div>
+
+        <!-- 畫布包裹器 -->
+        <div class="canvas-wrapper">
+            <canvas id="gameCanvas" width="800" height="480"></canvas>
+            <!-- 訊息提示 -->
+            <div id="message"></div>
+            <!-- 遊戲結束彈窗 -->
+            <div id="popup"></div>
+            
+            <!-- 研究面板 (移到 canvas-wrapper 內方便定位或用 absolute) -->
+            <div id="researchPanel">
+                <div class="research-header">
+                    <span>🔬 科技研究室</span>
+                    <span style="cursor:pointer; font-size:1.5rem;" id="closeResearch">×</span>
+                </div>
+                
+                <!-- 研究項目 1: 研發加速 -->
+                <div class="research-item">
+                    <div class="research-info">
+                        <span>⚡ 研發加速 (Lv. <span id="resSpeedLvl">0</span>)</span>
+                    </div>
+                    <div class="research-desc">減少解鎖新砲塔的等待時間 (每級 -10%)</div>
+                    <button id="btnResSpeed" class="research-btn">升級 (250金)</button>
+                </div>
+
+                <!-- 研究項目 2: 火力強化 -->
+                <div class="research-item">
+                    <div class="research-info">
+                        <span>⚔️ 火力強化 (Lv. <span id="resDmgLvl">0</span>)</span>
+                    </div>
+                    <div class="research-desc">提升所有砲塔攻擊力 (每級 +10%)</div>
+                    <button id="btnResDmg" class="research-btn">升級 (300金)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- UI 控制面板 -->
+        <div id="ui-panel">
+            <div id="stats">
+                <span id="money">💰 金錢: 450</span>
+                <span id="lives">❤️ 生命: 20</span>
+                <span id="wave">🌊 波數: 0</span>
+            </div>
+            <div id="controls">
+                <button id="startWaveBtn" class="start-wave">開始下一波</button>
+                <button id="buyTowerBtn" class="tower-buy" data-type="standard">購買 🗼 (75金)</button>
+                <button id="buyRapidTowerBtn" class="tower-buy" data-type="rapid">購買 ⚡ (125金)</button>
+                <button id="buySplashTowerBtn" class="tower-buy" data-type="splash">購買 💥 (175金)</button>
+                <button id="autoBuildBtn">🤖 自動建造: 關</button>
+                <button id="researchToggleBtn">🔬 研究室</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+
+            // UI 元素
+            const moneyEl = document.getElementById('money');
+            const livesEl = document.getElementById('lives');
+            const waveEl = document.getElementById('wave');
+            const startWaveBtn = document.getElementById('startWaveBtn');
+            const buyTowerBtns = document.querySelectorAll('.tower-buy');
+            const autoBuildBtn = document.getElementById('autoBuildBtn');
+            const popupEl = document.getElementById('popup');
+            const messageEl = document.getElementById('message');
+            
+            // 研究室 UI
+            const researchToggleBtn = document.getElementById('researchToggleBtn');
+            const researchPanel = document.getElementById('researchPanel');
+            const closeResearchBtn = document.getElementById('closeResearch');
+            const btnResSpeed = document.getElementById('btnResSpeed');
+            const btnResDmg = document.getElementById('btnResDmg');
+            const resSpeedLvlEl = document.getElementById('resSpeedLvl');
+            const resDmgLvlEl = document.getElementById('resDmgLvl');
+
+            const TILE_SIZE = 40;
+            const COLS = canvas.width / TILE_SIZE; // 800 / 40 = 20
+            const ROWS = canvas.height / TILE_SIZE; // 480 / 40 = 12
+            const MAX_BLUEPRINTS = 10; // 藍圖上限
+
+            let money = 450;
+            let lives = 20;
+            let wave = 0;
+            let gameRunning = true;
+            let isAutoBuildOn = false; // 自動建造狀態
+
+            // 研究資料
+            const researchLevels = {
+                speed: 0,
+                damage: 0
+            };
+            // 追蹤研究計時器 { type: remainingFrames }
+            const researchTimers = {
+                speed: 0,
+                damage: 0
+            };
+            const researchConfig = {
+                // time: 600 frames = 10 seconds (at 60fps)
+                speed: { baseCost: 250, costInc: 150, max: 5, time: 600 },
+                damage: { baseCost: 300, costInc: 200, max: 5, time: 600 }
+            };
+
+            const enemies = [];
+            const towers = [];
+            const projectiles = [];
+            const explosions = []; // 用於範圍傷害的爆炸效果
+
+            // 敵人路徑 (x, y 座標)
+            const waypoints = [
+                { x: 0, y: 5 }, { x: 3, y: 5 }, { x: 3, y: 2 }, { x: 7, y: 2 }, { x: 7, y: 8 },
+                { x: 12, y: 8 }, { x: 12, y: 3 }, { x: 17, y: 3 }, { x: 17, y: 10 }, { x: 20, y: 10 }
+            ].map(p => ({ x: (p.x * TILE_SIZE) + (TILE_SIZE / 2), y: (p.y * TILE_SIZE) + (TILE_SIZE / 2) }));
+
+            // 遊戲網格 (0: 草地, 1: 路徑)
+            const grid = Array(ROWS).fill(0).map(() => Array(COLS).fill(0));
+
+            // 繪製路徑到網格
+            function buildPathGrid() {
+                ctx.lineWidth = TILE_SIZE * 0.8; // 路徑寬度
+                ctx.strokeStyle = '#a0522d'; // 棕色
+                ctx.beginPath();
+                ctx.moveTo(waypoints[0].x, waypoints[0].y);
+                
+                // 標記路徑格
+                function setGridPath(x, y) {
+                    const gridX = Math.floor(x / TILE_SIZE);
+                    const gridY = Math.floor(y / TILE_SIZE);
+                    if (grid[gridY] && grid[gridY][gridX] !== undefined) {
+                        grid[gridY][gridX] = 1; // 1 代表路徑
+                    }
+                }
+
+                for (let i = 1; i < waypoints.length; i++) {
+                    const prev = waypoints[i - 1];
+                    const curr = waypoints[i];
+                    ctx.lineTo(curr.x, curr.y);
+
+                    // 標記路徑上的格子
+                    const dx = curr.x - prev.x;
+                    const dy = curr.y - prev.y;
+                    const steps = Math.max(Math.abs(dx), Math.abs(dy)) / (TILE_SIZE / 4);
+                    
+                    for (let j = 0; j <= steps; j++) {
+                        const x = prev.x + (dx * j / steps);
+                        const y = prev.y + (dy * j / steps);
+                        setGridPath(x, y);
+                        setGridPath(x - TILE_SIZE * 0.4, y - TILE_SIZE * 0.4);
+                        setGridPath(x + TILE_SIZE * 0.4, y + TILE_SIZE * 0.4);
+                        setGridPath(x - TILE_SIZE * 0.4, y + TILE_SIZE * 0.4);
+                        setGridPath(x + TILE_SIZE * 0.4, y - TILE_SIZE * 0.4);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            // 繪製網格背景 (路徑和草地)
+            function drawBackground() {
+                // 繪製草地 (預設背景色)
+                ctx.fillStyle = '#5a8c49';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 繪製路徑
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = TILE_SIZE * 0.9;
+                ctx.strokeStyle = '#a0522d'; // 路徑顏色
+                ctx.beginPath();
+                ctx.moveTo(waypoints[0].x - TILE_SIZE, waypoints[0].y); // 從螢幕外開始
+                for (let i = 0; i < waypoints.length; i++) {
+                    ctx.lineTo(waypoints[i].x, waypoints[i].y);
+                }
+                ctx.stroke();
+
+                ctx.lineWidth = TILE_SIZE * 0.7;
+                ctx.strokeStyle = '#c27d53'; // 路徑內層顏色
+                ctx.beginPath();
+                ctx.moveTo(waypoints[0].x - TILE_SIZE, waypoints[0].y);
+                 for (let i = 0; i < waypoints.length; i++) {
+                    ctx.lineTo(waypoints[i].x, waypoints[i].y);
+                }
+                ctx.stroke();
+            }
+
+            // 初始化網格
+            buildPathGrid();
+
+            // 敵人
+            class Enemy {
+                constructor() {
+                    this.x = waypoints[0].x - TILE_SIZE; // 從左側螢幕外開始
+                    this.y = waypoints[0].y;
+                    this.radius = 12;
+                    this.waypointIndex = 0;
+                    this.speed = 1.5 + (wave * 0.1); // 速度隨波次增加
+                    // 調降敵人血量
+                    this.maxHealth = Math.floor(8 + wave * 2 + Math.pow(wave, 1.05)); // 血量隨波次增加
+                    this.health = this.maxHealth;
+                    this.value = 5 + wave; // 擊殺金錢
+                }
+
+                update() {
+                    if (this.waypointIndex >= waypoints.length) {
+                        return; // 已達終點
+                    }
+
+                    const target = waypoints[this.waypointIndex];
+                    const dx = target.x - this.x;
+                    const dy = target.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < this.speed) {
+                        this.x = target.x;
+                        this.y = target.y;
+                        this.waypointIndex++;
+                        if (this.waypointIndex >= waypoints.length) {
+                            this.reachEnd();
+                        }
+                    } else {
+                        this.x += (dx / distance) * this.speed;
+                        this.y += (dy / distance) * this.speed;
+                    }
+                }
+
+                draw() {
+                    // 繪製敵人
+                    ctx.font = '24px Arial';
+                    ctx.fillText('👾', this.x - this.radius, this.y + this.radius / 2);
+
+                    // 繪製血條
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(this.x - this.radius, this.y - this.radius - 8, this.radius * 2, 5);
+                    ctx.fillStyle = 'green';
+                    ctx.fillRect(this.x - this.radius, this.y - this.radius - 8, (this.radius * 2) * (this.health / this.maxHealth), 5);
+                }
+
+                takeDamage(amount) {
+                    this.health -= amount;
+                    if (this.health <= 0) {
+                        this.die();
+                        return true; // 死亡
+                    }
+                    return false; // 存活
+                }
+
+                die() {
+                    money += this.value;
+                    const index = enemies.indexOf(this);
+                    if (index > -1) {
+                        enemies.splice(index, 1);
+                    }
+                }
+
+                reachEnd() {
+                    lives--;
+                    const index = enemies.indexOf(this);
+                    if (index > -1) {
+                        enemies.splice(index, 1);
+                    }
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+
+            // 防禦塔設定
+            const towerTypes = {
+                standard: {
+                    emoji: '🗼',
+                    range: 120,
+                    fireRate: 60, 
+                    projectile: { speed: 5, damage: 10, color: 'cyan' },
+                    cost: 75,
+                    unlockCost: 0,
+                    unlockTime: 0 // 預設 0秒
+                },
+                rapid: {
+                    emoji: '⚡',
+                    range: 100,
+                    fireRate: 20, 
+                    projectile: { speed: 6, damage: 4, color: 'yellow' },
+                    cost: 125,
+                    unlockCost: 300,
+                    unlockTime: 300 // 5秒 (60fps * 5)
+                },
+                splash: {
+                    emoji: '💥',
+                    range: 140,
+                    fireRate: 100, 
+                    projectile: { speed: 3, damage: 15, color: 'orange', splashRadius: 40 },
+                    cost: 175,
+                    unlockCost: 500,
+                    unlockTime: 600 // 10秒 (60fps * 10)
+                }
+            };
+            
+            // 追蹤哪些塔已解鎖
+            let unlockedTowers = {
+                standard: true,
+                rapid: false,
+                splash: false
+            };
+            
+            // 追蹤解鎖進度 { type: 剩餘幀數 }
+            let unlockingTimers = {
+                standard: 0,
+                rapid: 0,
+                splash: 0
+            };
+
+            class Tower {
+                constructor(x, y, type, isBuilt = true) {
+                    this.x = (x * TILE_SIZE) + (TILE_SIZE / 2);
+                    this.y = (y * TILE_SIZE) + (TILE_SIZE / 2);
+                    this.type = type;
+                    this.isBuilt = isBuilt; // 是否已建造完成 (藍圖模式)
+                    const specs = towerTypes[type];
+                    this.emoji = specs.emoji;
+                    this.range = specs.range;
+                    this.fireRate = specs.fireRate;
+                    this.projectileSpec = specs.projectile;
+                    this.cost = specs.cost;
+                    this.fireCooldown = 0;
+                    this.target = null;
+                }
+
+                findTarget() {
+                    // AI 邏輯：優先攻擊路徑上走最遠 (waypointIndex 最大) 的敵人
+                    let bestTarget = null;
+                    let maxWaypointIndex = -1;
+                    let minDistanceToNext = Infinity;
+
+                    for (const enemy of enemies) {
+                        const distance = Math.sqrt(Math.pow(this.x - enemy.x, 2) + Math.pow(this.y - enemy.y, 2));
+
+                        if (distance <= this.range) {
+                            if (enemy.waypointIndex > maxWaypointIndex) {
+                                maxWaypointIndex = enemy.waypointIndex;
+                                bestTarget = enemy;
+                                if (enemy.waypointIndex < waypoints.length) {
+                                    const nextWp = waypoints[enemy.waypointIndex];
+                                    const dx = nextWp.x - enemy.x;
+                                    const dy = nextWp.y - enemy.y;
+                                    minDistanceToNext = Math.sqrt(dx * dx + dy * dy);
+                                } else {
+                                    minDistanceToNext = Infinity;
+                                }
+                            } else if (enemy.waypointIndex === maxWaypointIndex) {
+                                if (enemy.waypointIndex < waypoints.length) {
+                                    const nextWp = waypoints[enemy.waypointIndex];
+                                    const dx = nextWp.x - enemy.x;
+                                    const dy = nextWp.y - enemy.y;
+                                    const distToNext = Math.sqrt(dx * dx + dy * dy);
+                                    if (distToNext < minDistanceToNext) {
+                                        minDistanceToNext = distToNext;
+                                        bestTarget = enemy;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    this.target = bestTarget;
+                }
+
+                update() {
+                    if (!this.isBuilt) return; // 藍圖不會攻擊
+
+                    if (this.fireCooldown > 0) {
+                        this.fireCooldown--;
+                    }
+                    if (this.target) {
+                        const distance = Math.sqrt(Math.pow(this.x - this.target.x, 2) + Math.pow(this.y - this.target.y, 2));
+                        if (this.target.health <= 0 || distance > this.range) {
+                            this.target = null;
+                        }
+                    }
+                    if (!this.target) {
+                        this.findTarget();
+                    }
+                    if (this.target && this.fireCooldown <= 0) {
+                        this.shoot();
+                        this.fireCooldown = this.fireRate;
+                    }
+                }
+
+                draw() {
+                    ctx.font = '28px Arial';
+                    
+                    if (!this.isBuilt) {
+                        // 繪製藍圖效果 (半透明 + 灰色)
+                        ctx.globalAlpha = 0.4;
+                        ctx.fillStyle = '#aaa';
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, TILE_SIZE/2 - 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = 'black';
+                    }
+
+                    ctx.fillText(this.emoji, this.x - TILE_SIZE / 2 + 5, this.y + TILE_SIZE / 2 - 8);
+
+                    if (!this.isBuilt) {
+                        ctx.globalAlpha = 1.0;
+                    }
+
+                    if (placingTowerType && this.x === mouse.x && this.y === mouse.y) {
+                         ctx.beginPath();
+                         ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+                         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                         ctx.stroke();
+                    }
+                }
+
+                shoot() {
+                    // 套用火力強化研究
+                    const damageMultiplier = 1 + (researchLevels.damage * 0.1);
+                    // 複製 spec 並修改傷害
+                    const modifiedSpec = { 
+                        ...this.projectileSpec, 
+                        damage: this.projectileSpec.damage * damageMultiplier 
+                    };
+                    projectiles.push(new Projectile(this.x, this.y, this.target, modifiedSpec));
+                }
+            }
+
+            // 子彈
+            class Projectile {
+                constructor(x, y, target, spec) {
+                    this.x = x;
+                    this.y = y;
+                    this.target = target;
+                    this.speed = spec.speed;
+                    this.damage = spec.damage;
+                    this.color = spec.color;
+                    this.radius = 4;
+                    this.splashRadius = spec.splashRadius || 0;
+                }
+
+                update() {
+                    if (!this.target || this.target.health <= 0) {
+                        this.destroy();
+                        return;
+                    }
+
+                    const dx = this.target.x - this.x;
+                    const dy = this.target.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < this.speed || distance < this.radius) {
+                        this.hitTarget();
+                        return;
+                    }
+
+                    this.x += (dx / distance) * this.speed;
+                    this.y += (dy / distance) * this.speed;
+                }
+
+                draw() {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                hitTarget() {
+                    if (this.splashRadius > 0) {
+                        explosions.push(new Explosion(this.x, this.y, this.splashRadius));
+                        for (const enemy of enemies) {
+                            const dist = Math.sqrt(Math.pow(this.x - enemy.x, 2) + Math.pow(this.y - enemy.y, 2));
+                            if (dist <= this.splashRadius) {
+                                enemy.takeDamage(this.damage);
+                            }
+                        }
+                    } else {
+                        if (this.target) {
+                            this.target.takeDamage(this.damage);
+                        }
+                    }
+                    this.destroy();
+                }
+
+                destroy() {
+                    const index = projectiles.indexOf(this);
+                    if (index > -1) {
+                        projectiles.splice(index, 1);
+                    }
+                }
+            }
+            
+            // 爆炸效果
+            class Explosion {
+                constructor(x, y, radius) {
+                    this.x = x;
+                    this.y = y;
+                    this.radius = radius;
+                    this.maxRadius = radius;
+                    this.duration = 15;
+                    this.life = this.duration;
+                }
+                
+                update() {
+                    this.life--;
+                    if(this.life <= 0) {
+                        const index = explosions.indexOf(this);
+                        if (index > -1) {
+                            explosions.splice(index, 1);
+                        }
+                    }
+                }
+                
+                draw() {
+                    const opacity = this.life / this.duration;
+                    this.radius = this.maxRadius * (1 - opacity);
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 165, 0, ${opacity * 0.5})`;
+                    ctx.fill();
+                }
+            }
+
+            // 遊戲邏輯
+            let waveInProgress = false;
+
+            function startWave() {
+                if (waveInProgress) return;
+                waveInProgress = true;
+                wave++;
+                startWaveBtn.disabled = true;
+
+                const enemyCount = 10 + wave * 3;
+                for (let i = 0; i < enemyCount; i++) {
+                    setTimeout(() => {
+                        if (gameRunning) {
+                            enemies.push(new Enemy());
+                        }
+                    }, i * 500);
+                }
+
+                const checkWaveEnd = setInterval(() => {
+                    if (enemies.length === 0 && gameRunning) {
+                        waveInProgress = false;
+                        startWaveBtn.disabled = false;
+                        clearInterval(checkWaveEnd);
+                    }
+                }, 1000);
+            }
+
+            function updateUI() {
+                moneyEl.textContent = `💰 金錢: ${money}`;
+                livesEl.textContent = `❤️ 生命: ${lives}`;
+                waveEl.textContent = `🌊 波數: ${wave}`;
+                
+                // 更新購買按鈕狀態
+                buyTowerBtns.forEach(btn => {
+                    const type = btn.dataset.type;
+                    const specs = towerTypes[type];
+                    const isUnlocked = unlockedTowers[type];
+                    const unlockProgress = unlockingTimers[type];
+                    
+                    btn.className = 'tower-buy'; 
+                    btn.innerHTML = '';
+                    
+                    if (!isUnlocked) {
+                        if (unlockProgress > 0) {
+                            btn.classList.add('unlocking');
+                            const totalTime = calculateUnlockTime(specs.unlockTime); // 使用計算後的總時間
+                            const percent = ((totalTime - unlockProgress) / totalTime) * 100;
+                            const remainingSeconds = Math.ceil(unlockProgress / 60);
+                            
+                            const progressBg = document.createElement('div');
+                            progressBg.className = 'progress-bar';
+                            progressBg.style.width = `${percent}%`;
+                            btn.appendChild(progressBg);
+                            
+                            const textSpan = document.createElement('span');
+                            textSpan.textContent = `⏳ 研發中... ${remainingSeconds}s`;
+                            textSpan.style.position = 'relative';
+                            textSpan.style.zIndex = '2';
+                            btn.appendChild(textSpan);
+                            
+                        } else {
+                            btn.classList.add('locked');
+                            btn.textContent = `🔓 解鎖 ${specs.emoji} (${specs.unlockCost}金)`;
+                            if (money < specs.unlockCost) btn.classList.add('expensive');
+                        }
+                    } else {
+                        btn.textContent = `購買 ${specs.emoji} (${specs.cost}金)`;
+                        if (money < specs.cost) btn.classList.add('expensive');
+                        if (placingTowerType === type) btn.classList.add('selected');
+                    }
+                });
+
+                // 更新研究按鈕狀態
+                updateResearchUI();
+            }
+            
+            function calculateCost(base, inc, lvl) {
+                return base + (inc * lvl);
+            }
+            
+            function calculateUnlockTime(baseTime) {
+                 // 每一級減少 10% 時間
+                 const reduction = researchLevels.speed * 0.1;
+                 return Math.floor(baseTime * (1 - reduction));
+            }
+
+            // 更新研究 UI
+            function updateResearchUI() {
+                resSpeedLvlEl.textContent = researchLevels.speed;
+                resDmgLvlEl.textContent = researchLevels.damage;
+
+                // 研發加速按鈕
+                updateResearchButton(
+                    btnResSpeed, 
+                    'speed', 
+                    researchConfig.speed, 
+                    researchLevels.speed, 
+                    researchTimers.speed
+                );
+
+                // 火力強化按鈕
+                updateResearchButton(
+                    btnResDmg, 
+                    'damage', 
+                    researchConfig.damage, 
+                    researchLevels.damage, 
+                    researchTimers.damage
+                );
+            }
+
+            // 輔助函數：更新單個研究按鈕
+            function updateResearchButton(btn, type, config, currentLevel, timer) {
+                // 清空內容
+                btn.innerHTML = '';
+                btn.className = 'research-btn';
+
+                if (currentLevel >= config.max) {
+                    btn.textContent = "已達上限 (MAX)";
+                    btn.disabled = true;
+                    btn.classList.add('maxed');
+                    return;
+                }
+
+                if (timer > 0) {
+                    // 研究中
+                    btn.classList.add('unlocking');
+                    btn.disabled = true; // 研究中不可點擊
+
+                    const totalTime = config.time;
+                    const percent = ((totalTime - timer) / totalTime) * 100;
+                    const remainingSeconds = Math.ceil(timer / 60);
+
+                    const progressBg = document.createElement('div');
+                    progressBg.className = 'progress-bar';
+                    progressBg.style.width = `${percent}%`;
+                    btn.appendChild(progressBg);
+
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = `🧪 研究中... ${remainingSeconds}s`;
+                    textSpan.style.position = 'relative';
+                    textSpan.style.zIndex = '2';
+                    btn.appendChild(textSpan);
+                } else {
+                    // 正常狀態
+                    const nextCost = calculateCost(config.baseCost, config.costInc, currentLevel);
+                    btn.textContent = `升級 (${nextCost}金)`;
+                    btn.disabled = money < nextCost;
+                    if (money < nextCost) {
+                        // 雖然 CSS 有 disabled 樣式，但也可以加 expensive class 提示
+                    }
+                }
+            }
+
+            function showMessage(text, isSuccess = false) {
+                messageEl.textContent = text;
+                messageEl.className = isSuccess ? 'success' : '';
+                messageEl.style.opacity = 1;
+                setTimeout(() => {
+                    messageEl.style.opacity = 0;
+                }, 2000);
+            }
+
+            function gameOver() {
+                if (!gameRunning) return;
+                gameRunning = false;
+                popupEl.textContent = "遊戲結束！";
+                popupEl.style.display = 'block';
+            }
+
+            // 自動建造邏輯 (檢查已放置的藍圖)
+            function checkBlueprints() {
+                const blueprints = towers.filter(t => !t.isBuilt);
+                for (const bp of blueprints) {
+                    if (money >= bp.cost) {
+                        money -= bp.cost;
+                        bp.isBuilt = true;
+                        explosions.push(new Explosion(bp.x, bp.y, 20));
+                        updateUI();
+                        break; 
+                    }
+                }
+            }
+            
+            // 更新解鎖和研究進度
+            function updateUnlocking() {
+                let needsUpdate = false;
+                
+                // 1. 砲塔解鎖
+                for (const type in unlockingTimers) {
+                    if (unlockingTimers[type] > 0) {
+                        unlockingTimers[type]--;
+                        needsUpdate = true;
+                        if (unlockingTimers[type] <= 0) {
+                            unlockingTimers[type] = 0;
+                            unlockedTowers[type] = true;
+                            showMessage(`${towerTypes[type].emoji} 研發完成！`, true);
+                            explosions.push(new Explosion(canvas.width/2, canvas.height/2, 200)); 
+                            needsUpdate = true;
+                        }
+                    }
+                }
+
+                // 2. 研究升級
+                for (const type in researchTimers) {
+                    if (researchTimers[type] > 0) {
+                        researchTimers[type]--;
+                        needsUpdate = true;
+                        if (researchTimers[type] <= 0) {
+                            researchTimers[type] = 0;
+                            researchLevels[type]++; // 升級
+                            const name = type === 'speed' ? '研發加速' : '火力強化';
+                            showMessage(`${name} 升級至 Lv.${researchLevels[type]}`, true);
+                            needsUpdate = true;
+                        }
+                    }
+                }
+
+                if (needsUpdate && frameCount % 5 === 0) { // 稍微頻繁一點更新 UI 以顯示平滑進度
+                     updateUI();
+                }
+            }
+            
+            // 研究面板開關
+            researchToggleBtn.addEventListener('click', () => {
+                researchPanel.style.display = researchPanel.style.display === 'block' ? 'none' : 'block';
+            });
+            closeResearchBtn.addEventListener('click', () => {
+                researchPanel.style.display = 'none';
+            });
+
+            // 研究升級邏輯
+            btnResSpeed.addEventListener('click', () => {
+                startResearch('speed');
+            });
+
+            btnResDmg.addEventListener('click', () => {
+                startResearch('damage');
+            });
+
+            function startResearch(type) {
+                // 如果已經在研究中，不動作
+                if (researchTimers[type] > 0) return;
+
+                const config = researchConfig[type];
+                const currentLevel = researchLevels[type];
+                const cost = calculateCost(config.baseCost, config.costInc, currentLevel);
+
+                if (money >= cost && currentLevel < config.max) {
+                    money -= cost;
+                    // 開始計時
+                    researchTimers[type] = config.time;
+                    updateUI(); // 立即更新顯示進度條
+                } else if (money < cost) {
+                    showMessage('金錢不足！');
+                }
+            }
+
+            // 切換自動建造
+            autoBuildBtn.addEventListener('click', () => {
+                isAutoBuildOn = !isAutoBuildOn;
+                autoBuildBtn.textContent = isAutoBuildOn ? "🤖 自動建造: 開" : "🤖 自動建造: 關";
+                if (isAutoBuildOn) {
+                    autoBuildBtn.classList.add('active');
+                } else {
+                    autoBuildBtn.classList.remove('active');
+                }
+            });
+
+
+            // 滑鼠/放置邏輯
+            let placingTowerType = null;
+            let mouse = { x: 0, y: 0, gridX: 0, gridY: 0 };
+
+            function getMousePos(evt) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = (evt.clientX - rect.left) * scaleX;
+                const y = (evt.clientY - rect.top) * scaleY;
+                return { x, y };
+            }
+
+            canvas.addEventListener('mousemove', (e) => {
+                const pos = getMousePos(e);
+                mouse.x = pos.x;
+                mouse.y = pos.y;
+                mouse.gridX = Math.floor(mouse.x / TILE_SIZE);
+                mouse.gridY = Math.floor(mouse.y / TILE_SIZE);
+            });
+
+            canvas.addEventListener('click', () => {
+                if (!placingTowerType) return;
+
+                const specs = towerTypes[placingTowerType];
+                const cost = specs.cost;
+                
+                if (canPlaceTower(mouse.gridX, mouse.gridY)) {
+                    const currentBlueprints = towers.filter(t => !t.isBuilt).length;
+                    let builtNow = false;
+                    
+                    if (money >= cost && !isAutoBuildOn) {
+                        money -= cost;
+                        builtNow = true;
+                    } else {
+                        builtNow = false; 
+                    }
+
+                    if (!builtNow && currentBlueprints >= MAX_BLUEPRINTS) {
+                        showMessage(`藍圖數量已達上限 (${MAX_BLUEPRINTS}個)！`);
+                        return;
+                    }
+
+                    towers.push(new Tower(mouse.gridX, mouse.gridY, placingTowerType, builtNow));
+                    grid[mouse.gridY][mouse.gridX] = 2; 
+                    
+                    updateUI();
+                }
+            });
+            
+            function canPlaceTower(gridX, gridY) {
+                if (!grid[gridY] || grid[gridY][gridX] === undefined) return false;
+                return grid[gridY][gridX] === 0;
+            }
+
+            function drawPlacementPreview() {
+                if (!placingTowerType) return;
+                const gridX = mouse.gridX;
+                const gridY = mouse.gridY;
+                if (gridX < 0 || gridX >= COLS || gridY < 0 || gridY >= ROWS) return;
+
+                const x = (gridX * TILE_SIZE) + (TILE_SIZE / 2);
+                const y = (gridY * TILE_SIZE) + (TILE_SIZE / 2);
+                const specs = towerTypes[placingTowerType];
+
+                ctx.globalAlpha = 0.5;
+                ctx.font = '28px Arial';
+                ctx.fillText(specs.emoji, x - TILE_SIZE / 2 + 5, y + TILE_SIZE / 2 - 8);
+                
+                ctx.beginPath();
+                ctx.arc(x, y, specs.range, 0, Math.PI * 2);
+                
+                if (canPlaceTower(gridX, gridY)) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                } else {
+                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+                }
+                ctx.stroke();
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+
+            // 按鈕事件
+            startWaveBtn.addEventListener('click', startWave);
+
+            buyTowerBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const type = btn.dataset.type;
+                    const specs = towerTypes[type];
+                    
+                    if (!unlockedTowers[type]) {
+                        if (unlockingTimers[type] > 0) return;
+
+                        if (money >= specs.unlockCost) {
+                            money -= specs.unlockCost;
+                            // 套用研究加速
+                            unlockingTimers[type] = calculateUnlockTime(specs.unlockTime);
+                            updateUI();
+                        } else {
+                            showMessage('金錢不足以解鎖！');
+                        }
+                    } else {
+                        if (placingTowerType === type) {
+                            placingTowerType = null;
+                        } else {
+                            placingTowerType = type;
+                        }
+                        updateUI();
+                    }
+                });
+            });
+            
+            // 遊戲主循環
+            let frameCount = 0; 
+            
+            function gameLoop() {
+                if (!gameRunning) return;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawBackground();
+
+                frameCount++;
+                if (isAutoBuildOn && frameCount % 10 === 0) {
+                    checkBlueprints();
+                }
+                
+                updateUnlocking();
+
+                // 修正：檢查是否為 undefined
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    if (enemies[i]) {
+                        enemies[i].update();
+                    }
+                    if (enemies[i]) { // 再檢查一次，因為 update 可能移除了它
+                        enemies[i].draw();
+                    }
+                }
+
+                towers.forEach(tower => {
+                    tower.update();
+                    tower.draw();
+                });
+
+                // 修正：檢查是否為 undefined
+                for (let i = projectiles.length - 1; i >= 0; i--) {
+                    if (projectiles[i]) {
+                        projectiles[i].update();
+                    }
+                    if (projectiles[i]) {
+                        projectiles[i].draw();
+                    }
+                }
+                
+                // 修正：檢查是否為 undefined
+                for (let i = explosions.length - 1; i >= 0; i--) {
+                     if (explosions[i]) {
+                        explosions[i].update();
+                    }
+                    if (explosions[i]) {
+                        explosions[i].draw();
+                    }
+                }
+
+                drawPlacementPreview();
+                requestAnimationFrame(gameLoop);
+            }
+
+            updateUI();
+            drawBackground();
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
